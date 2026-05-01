@@ -21,6 +21,44 @@ The repository includes a trained checkpoint at `models/best.pt`, so evaluators 
 - **LLM report generation:** Produces structured, human-readable verdicts and recommendations.
 - **Multi-image support:** Handles batch/case-level analysis in both CLI and Streamlit.
 
+## Datasets Used
+
+This project was developed using a merged vehicle-damage dataset setup:
+
+- **CarDD** (primary benchmark dataset for car damage detection)
+- **VehiDE** (additional vehicle damage samples for broader variation)
+
+The training workflow combines these into a unified dataset, then uses YOLO-format labels for training/inference compatibility.
+
+### Dataset Preparation Scripts
+
+- `prepare_dataset.py` -> preprocess CarDD into YOLO structure
+- `prepare_vehide_dataset.py` -> preprocess VehiDE into YOLO structure
+- `merge_datasets.py` -> merge prepared datasets into one combined dataset
+- `split_dataset.py` -> create deterministic `val/test` split for evaluation
+
+### Expected Dataset Location
+
+```text
+data/
+  Combined_Damage/
+    images/
+      train/
+      val/
+      test/
+    labels/
+      train/
+      val/
+      test/
+    dataset.yaml
+```
+
+### Notes for Evaluators
+
+- Retraining is **not required** for this submission because `models/best.pt` is included.
+- If you want to reproduce training, ensure dataset paths in `dataset.yaml` match your local layout.
+- `split_dataset.py` is provided so test metrics can be computed on a held-out test split instead of only validation data.
+
 ## Project Structure
 
 ```text
@@ -45,7 +83,7 @@ vehicle_damage_ai/
 
 ## Setup
 
-### 1) Create environment and install dependencies
+### 1) Create environment and install Python dependencies
 
 ```bash
 python -m venv .venv
@@ -57,7 +95,49 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2) Configure environment variables
+### 2) Download required/optional model assets and place them correctly
+
+This repo already includes:
+- `models/best.pt` (trained YOLO damage detector, required for no-training evaluation)
+
+#### SAM checkpoint (optional but recommended)
+
+If you want segmentation overlays and SAM-assisted refinement, download the checkpoint:
+- File: `sam_vit_b_01ec64.pth`
+- Source: [https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth)
+- Place at: `models/sam_vit_b_01ec64.pth`
+
+Final expected model folder:
+
+```text
+models/
+  best.pt
+  sam_vit_b_01ec64.pth   # optional
+```
+
+#### ViT model (auto-download)
+
+No manual download needed by default. On first run, Hugging Face downloads:
+- `google/vit-base-patch16-224`
+
+To use a different model, set `VIT_DAMAGE_MODEL` in `.env`.
+
+### 3) Optional LLM runtime setup
+
+#### Groq (cloud, recommended)
+- Create API key from [https://console.groq.com/keys](https://console.groq.com/keys)
+- Add it to `.env` as `GROQ_API_KEY`
+
+#### Ollama fallback (local)
+Install Ollama from [https://ollama.com/download](https://ollama.com/download), then pull the fallback model:
+
+```bash
+ollama pull llama3.1:latest
+```
+
+If Groq is unavailable, the pipeline tries Ollama automatically.
+
+### 4) Configure environment variables
 
 Create `.env`:
 
@@ -79,6 +159,14 @@ Notes:
 - Groq is optional but recommended for better reasoning quality.
 - If Groq is unavailable, system falls back to Ollama, then rule-based reasoning.
 - SAM is optional; pipeline still runs without it.
+
+### 5) Quick dependency sanity checks (recommended)
+
+```bash
+python -c "import torch; print('torch ok:', torch.__version__)"
+python -c "import clip; print('clip ok')"
+python -c "from transformers import pipeline; print('transformers ok')"
+```
 
 ## Quick Start (No Training Required)
 
@@ -116,6 +204,18 @@ Case-level (multi-image):
 - uncertain-image rate
 - case verdict and action guidance
 
+## Metrics and Evaluation Guidance
+
+- **Detection metrics (YOLO):** mAP50, mAP50-95, precision, recall
+- **Operational metrics (pipeline):** uncertain rate, model-agreement ratio, average fused confidence
+- **Decision quality checks:** consistency between computed fraud risk and final decision (`APPROVE` / `REVIEW` / `REJECT`)
+
+If you retrain and evaluate with YOLO directly, use your dataset YAML with test split:
+
+```bash
+yolo detect val model=models/best.pt data=data/Combined_Damage/dataset.yaml split=test
+```
+
 ## Training (Optional)
 
 Retraining is not required for evaluation because `models/best.pt` is already included.
@@ -146,8 +246,18 @@ YOLO Detection
 
 ## Recommended Evaluation Flow
 
-1. Install dependencies.
-2. Ensure `models/best.pt` exists (already included in this repo).
-3. Run CLI on provided sample images.
-4. Run Streamlit and test multi-image cases.
-5. Validate outputs: detection quality, uncertainty flags, and reasoning consistency.
+1. Install Python dependencies from `requirements.txt`.
+2. Verify `models/best.pt` is present (already included in this repo).
+3. (Optional) Download SAM checkpoint to `models/sam_vit_b_01ec64.pth`.
+4. Configure `.env` (Groq key and optional overrides).
+5. (Optional) Install Ollama and run `ollama pull llama3.1:latest`.
+6. Run CLI on sample images.
+7. Run Streamlit for interactive multi-image evaluation.
+8. Validate outputs: detection quality, uncertainty flags, and reasoning consistency.
+
+## Troubleshooting
+
+- **SAM not loading:** confirm `SAM_CHECKPOINT` points to `models/sam_vit_b_01ec64.pth`.
+- **Groq not used:** ensure `.env` has `GROQ_API_KEY`, then restart CLI/Streamlit process.
+- **Ollama fallback failing:** verify Ollama server is running and model `llama3.1:latest` is pulled.
+- **Torch import/DLL errors on Windows:** use the project virtual environment interpreter for all commands.
