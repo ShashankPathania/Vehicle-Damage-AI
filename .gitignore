@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+
+# Environment / secrets
+.env
+.env.*
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Project runtime artifacts
+logs/
+outputs/
+runs/
+
+# Local datasets and generated assets
+data/
+samples/
+
+# Model checkpoints / weights
+*.pt
+*.pth
+*.onnx
