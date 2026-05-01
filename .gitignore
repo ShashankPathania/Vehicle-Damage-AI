@@ -36,3 +36,6 @@ samples/
 *.pt
 *.pth
 *.onnx
+
+# Keep only the final trained YOLO checkpoint for evaluation
+!models/best.pt

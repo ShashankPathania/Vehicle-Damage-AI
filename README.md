@@ -1,113 +1,153 @@
-# AI-Based Vehicle Damage Assessment & Insurance Claim Consistency Checker
+# Vehicle Damage AI
 
-This capstone project detects vehicle damage from images, estimates severity, and cross-checks an insurance claim against visual evidence.  
-It uses YOLOv8s for detection and CLIP for claim-image consistency validation.  
-The system outputs annotated images, structured reports, and fraud risk levels for claim triage.  
-A Streamlit app is included for a clean live demo workflow.
+Multi-model vehicle damage assessment and insurance-claim support system with:
+- YOLOv8 damage detection
+- CLIP validation for visual-text alignment
+- ViT-based damage label refinement
+- Optional SAM segmentation
+- Uncertainty-aware decision layer
+- LLM reasoning (Groq primary, Ollama fallback)
+- Streamlit UI + CLI inference
 
-## 1) Install Dependencies
+The repository includes a trained checkpoint at `models/best.pt`, so evaluators can run inference directly without retraining.
+
+## Features
+
+- **Damage detection:** Detects damage regions and classes from car images.
+- **Fusion pipeline:** Combines YOLO, CLIP, and ViT signals for better label quality and confidence calibration.
+- **Post-processing:** Filters weak detections and merges overlap noise.
+- **Uncertainty modeling:** Flags low-confidence / disagreeing predictions for manual review.
+- **Claim consistency checks:** Compares visual evidence against claim text.
+- **LLM report generation:** Produces structured, human-readable verdicts and recommendations.
+- **Multi-image support:** Handles batch/case-level analysis in both CLI and Streamlit.
+
+## Project Structure
+
+```text
+vehicle_damage_ai/
+  app.py                     # Streamlit frontend
+  inference.py               # CLI inference entry point
+  train.py                   # YOLO training script
+  consistency.py             # Claim consistency logic
+  severity.py                # Severity scoring
+  fusion.py                  # Base detector + localization pipeline
+  models/
+    best.pt                  # Trained YOLO checkpoint (included)
+    clip_validator.py
+    vit_classifier.py
+    sam_segmenter.py
+  utils/
+    fusion.py                # Multi-model fusion + filtering
+    uncertainty.py           # Decision confidence + uncertainty factors
+    llm_reasoner.py          # Groq/Ollama reasoning + rule fallback
+  requirements.txt
+```
+
+## Setup
+
+### 1) Create environment and install dependencies
 
 ```bash
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# Linux/macOS
+source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-## 2) Download and Prepare CarDD Dataset
+### 2) Configure environment variables
 
-Official dataset source: [CarDD GitHub](https://github.com/cardd-project/CarDD)
+Create `.env`:
 
-1. Clone or download CarDD.
-2. Ensure raw dataset has:
-   - `images/`
-   - COCO annotation file (default assumed by script): `annotations/instances_default.json`
-3. Run dataset preparation:
+```env
+GROQ_API_KEY=your_key_here
+GROQ_MODEL=llama-3.1-8b-instant
+GROQ_BASE_URL=https://api.groq.com/openai/v1/chat/completions
 
-```bash
-python prepare_dataset.py --source "C:\path\to\raw\CarDD" --output "data/CarDD"
+OLLAMA_URL=http://localhost:11434/api/generate
+OLLAMA_MODEL=llama3.1:latest
+
+LLM_TIMEOUT_SEC=30
+VIT_DAMAGE_MODEL=google/vit-base-patch16-224
+SAM_CHECKPOINT=models/sam_vit_b_01ec64.pth
+SAM_MODEL_TYPE=vit_b
 ```
 
-Expected prepared structure:
+Notes:
+- Groq is optional but recommended for better reasoning quality.
+- If Groq is unavailable, system falls back to Ollama, then rule-based reasoning.
+- SAM is optional; pipeline still runs without it.
 
-```text
-data/
-  CarDD/
-    images/
-      train/
-      val/
-    labels/
-      train/
-      val/
-    dataset.yaml
-```
+## Quick Start (No Training Required)
 
-## 3) Train YOLOv8s
-
-```bash
-python train.py --epochs 50 --batch 16 --data "data/CarDD/dataset.yaml"
-```
-
-Smoke test:
-
-```bash
-python train.py --epochs 1 --batch 4 --data "data/CarDD/dataset.yaml"
-```
-
-Saved outputs:
-- `models/best.pt`
-- `logs/training_log.csv`
-- `logs/confusion_matrix.png` and additional training curves
-
-## 4) Run Inference (CLI)
+### CLI (single image)
 
 ```bash
 python inference.py --image "samples/sample_01.jpg" --claim "rear bumper scratched in parking"
 ```
 
-The script saves annotated output to:
-- `outputs/result.jpg`
+### CLI (multiple images)
 
-## 5) Launch Streamlit App
+```bash
+python inference.py --images "samples/sample_01.jpg" "samples/sample_02.jpg" --claim "front side impact while parked"
+```
+
+### Streamlit UI
 
 ```bash
 streamlit run app.py
 ```
 
-Open the displayed local URL in your browser, upload an image, enter a claim, and click **Analyze**.
+Open the local URL, upload one or more images, enter claim text, and click **Analyze**.
 
-## 6) Fetch Demo Samples
+## Output Summary
+
+For each image:
+- detections with final fused labels
+- confidence and uncertainty indicators
+- severity and risk signals
+- LLM-generated verdict + recommended actions
+
+Case-level (multi-image):
+- aggregated risk
+- average decision confidence
+- uncertain-image rate
+- case verdict and action guidance
+
+## Training (Optional)
+
+Retraining is not required for evaluation because `models/best.pt` is already included.
+
+If you still want to retrain:
 
 ```bash
-python fetch_samples.py
+python train.py --epochs 50 --batch 16 --data "data/CarDD/dataset.yaml"
 ```
 
-Sample claims are available in:
-- `samples/sample_claims.txt`
+## Architecture
 
-## 7) Expected Outputs
+```text
+YOLO Detection
+    -> CLIP Validation
+    -> ViT Refinement
+    -> (Optional) SAM Segmentation
+    -> Fusion + Post-processing
+    -> Uncertainty + Consistency
+    -> LLM Reasoning
+```
 
-- Annotated damage image with bounding boxes and severity labels.
-- Detection table: class, location, severity, action, score.
-- Claim consistency details including CLIP similarity and mismatch reasons.
-- Fraud risk level (`LOW`, `MEDIUM`, `HIGH`) and verdict summary.
+## Limitations
 
-## 8) Known Limitations
+- Performance depends on image quality, lighting, occlusions, and training data diversity.
+- SAM and larger LLMs improve quality but increase runtime.
+- Claim consistency is assistive, not legal/forensic proof.
 
-- Accuracy depends on CarDD training quality and annotation coverage.
-- CLIP consistency scoring is heuristic and may be sensitive to image composition.
-- CPU-only execution works but is slower than GPU acceleration.
-- Coarse location mapping from bounding boxes may miss complex camera angles.
+## Recommended Evaluation Flow
 
-## Two-Stage Pipeline Architecture
-
-This project uses a two-stage design to improve interpretability over single-model damage detection:
-
-- **Stage 1: Surface damage detection**  
-  `models/best.pt` (YOLOv8s fine-tuned on CarDD) detects damage classes such as dent, scratch, crack, glass breakage, lamp breakage, and tire flat.
-
-- **Stage 2: Car part localization**  
-  A geometric car-part mapping layer infers likely part regions (hood, bumper, windshield, doors, fenders, trunk, roof, headlights) directly from image-relative zones. This stage works with zero API keys and zero extra downloads.
-
-- **Fusion: IoU-based damage-to-part assignment**  
-  Each Stage 1 damage box is matched with Stage 2 part zones by IoU overlap. If overlap is low, a quadrant fallback assigns a best-effort part label.
-
-- **Why two stages**  
-  A single detector trained only on CarDD damage classes can identify *what* damage is present but often cannot reliably explain *which vehicle part* is affected. The two-stage pipeline addresses this dataset gap and provides better spatial context for claim verification and downstream fraud analysis.
+1. Install dependencies.
+2. Ensure `models/best.pt` exists (already included in this repo).
+3. Run CLI on provided sample images.
+4. Run Streamlit and test multi-image cases.
+5. Validate outputs: detection quality, uncertainty flags, and reasoning consistency.
